@@ -1,0 +1,8 @@
+namespace PointerDemo
+{
+    [default_interface]
+    runtimeclass PointerRenderer : Windows.UI.Xaml.Controls.SwapChainPanel
+    {
+        PointerRenderer();
+    }
+}
