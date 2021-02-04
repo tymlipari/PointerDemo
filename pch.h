@@ -1,7 +1,10 @@
 ﻿#pragma once
 
-#define NOMINMAX
+// STL
+#include <mutex>
 
+// Windows
+#define NOMINMAX
 #include <windows.h>
 #include <unknwn.h>
 #include <restrictederrorinfo.h>

@@ -9,13 +9,22 @@ namespace winrt::PointerDemo::implementation
         PointerRenderer();
         ~PointerRenderer();
 
+        static inline Windows::UI::Xaml::DependencyProperty CaptureInputOnPressProperty() { return s_captureInputOnPressProperty; }
+        inline bool CaptureInputOnPress() const { return unbox_value<bool>(GetValue(CaptureInputOnPressProperty())); }
+        inline void CaptureInputOnPress(bool newValue) { SetValue(CaptureInputOnPressProperty(), box_value(newValue)); }
+
     private:
+        // DependencyProperty handling
+        static void InitializeDependencyProperties();
+        static void OnCaptureInputOnPressChanged(Windows::UI::Xaml::DependencyObject const& target, Windows::UI::Xaml::DependencyPropertyChangedEventArgs const& args);
+
+        // Rendering
         void CreateRenderingResources();
         void RegisterForInputEvents();
-
         void Run() noexcept;
         void Render(IDXGISurface* renderTarget);
 
+        // Event handlers
         fire_and_forget OnSizeChanged();
         void OnPointerEntered(Windows::UI::Core::PointerEventArgs const& args);
         void OnPointerExited(Windows::UI::Core::PointerEventArgs const& args);
@@ -23,7 +32,14 @@ namespace winrt::PointerDemo::implementation
         void OnPointerPressed(Windows::UI::Core::PointerEventArgs const& args);
         void OnPointerReleased(Windows::UI::Core::PointerEventArgs const& args);
 
+        // Internal helpers
+        fire_and_forget SetCaptureInputOnPress(bool capture);
+
     private:
+        // XAML
+        inline static Windows::UI::Xaml::DependencyProperty s_captureInputOnPressProperty{ nullptr };
+
+        // Render thread
         std::thread m_renderThread;
         std::atomic_bool m_running{ true };
         handle m_readySignal;
@@ -45,6 +61,7 @@ namespace winrt::PointerDemo::implementation
         Windows::UI::Xaml::Controls::SwapChainPanel::SizeChanged_revoker m_sizeChangedSubscription;
 
         // Input
+        bool m_captureOnPress{ false };
         Windows::UI::Core::CoreIndependentInputSource m_inputSource{ nullptr };
         Windows::UI::Core::CoreIndependentInputSource::PointerEntered_revoker m_pointerEnteredSubscription;
         Windows::UI::Core::CoreIndependentInputSource::PointerExited_revoker m_pointerExitedSubscription;

@@ -4,5 +4,8 @@ namespace PointerDemo
     runtimeclass PointerRenderer : Windows.UI.Xaml.Controls.SwapChainPanel
     {
         PointerRenderer();
+
+        Boolean CaptureInputOnPress{ get; set; };
+        static Windows.UI.Xaml.DependencyProperty CaptureInputOnPressProperty{ get; };
     }
 }

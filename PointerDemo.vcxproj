@@ -125,7 +125,9 @@
     <ClInclude Include="MainPage.h">
       <DependentUpon>MainPage.xaml</DependentUpon>
     </ClInclude>
-    <ClInclude Include="PointerRenderer.h" />
+    <ClInclude Include="PointerRenderer.h">
+      <DependentUpon>PointerRenderer.idl</DependentUpon>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml">
@@ -160,7 +162,9 @@
       <DependentUpon>MainPage.xaml</DependentUpon>
     </ClCompile>
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
-    <ClCompile Include="PointerRenderer.cpp" />
+    <ClCompile Include="PointerRenderer.cpp">
+      <DependentUpon>PointerRenderer.idl</DependentUpon>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Midl Include="App.idl">

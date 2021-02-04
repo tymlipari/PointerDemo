@@ -6,7 +6,11 @@ namespace winrt::PointerDemo::implementation
 {
     using namespace Windows::Foundation;
     using namespace Windows::UI::Core;
+    using namespace Windows::UI::Xaml;
     using namespace Windows::UI::Xaml::Controls;
+    using namespace Windows::UI::Xaml::Interop;
+
+    static std::once_flag s_dependencyPropInitFlag;
 
     static inline IAsyncAction SetSwapChainOnPanelAsync(com_ptr<IDXGISwapChain> swapChain, SwapChainPanel panel)
     {
@@ -24,6 +28,8 @@ namespace winrt::PointerDemo::implementation
         , m_height{ ActualHeight() }
         , m_readySignal{ ::CreateEventW(nullptr, true, false, nullptr) }
     {
+        InitializeDependencyProperties();
+
         // Initialize render thread
         m_renderThread = std::thread(
             [this]() 
@@ -47,6 +53,23 @@ namespace winrt::PointerDemo::implementation
             m_running = false;
             m_renderThread.join();
         }
+    }
+
+    void PointerRenderer::InitializeDependencyProperties()
+    {
+        std::call_once(s_dependencyPropInitFlag, [&]()
+            {
+                s_captureInputOnPressProperty = DependencyProperty::Register(
+                    L"CaptureInputOnPress",
+                    xaml_typename<bool>(),
+                    xaml_typename<PointerDemo::PointerRenderer>(),
+                    PropertyMetadata(box_value(false), { &OnCaptureInputOnPressChanged }));
+            });
+    }
+
+    void PointerRenderer::OnCaptureInputOnPressChanged(DependencyObject const& target, DependencyPropertyChangedEventArgs const& args)
+    {
+        target.as<implementation::PointerRenderer>()->SetCaptureInputOnPress(unbox_value<bool>(args.NewValue()));
     }
 
     void PointerRenderer::Run() noexcept
@@ -290,6 +313,12 @@ namespace winrt::PointerDemo::implementation
 
         itr->second.m_pressed = true;
 
+        // Handle system capture if enabled
+        if (m_captureOnPress && !m_inputSource.HasCapture())
+        {
+            m_inputSource.SetPointerCapture();
+        }
+
         args.Handled(true);
     }
 
@@ -310,6 +339,33 @@ namespace winrt::PointerDemo::implementation
 
         itr->second.m_pressed = false;
 
+        // If all pointers have been released, release the system capture
+        bool allReleased = std::any_of(m_currentPointers.begin(), m_currentPointers.end(), [&](auto const& pointerData) { return !pointerData.second.m_pressed; });
+        if (m_inputSource.HasCapture() && allReleased)
+        {
+            m_inputSource.ReleasePointerCapture();
+        }
+
         args.Handled(true);
+    }
+
+    fire_and_forget PointerRenderer::SetCaptureInputOnPress(bool capture)
+    {
+        // Wait for the render thread to finish spinning up
+        co_await resume_on_signal(m_readySignal.get());
+
+        // Ensure we're running on the rendering thread
+        if (!m_inputSource.Dispatcher().HasThreadAccess())
+        {
+            co_await resume_foreground(m_inputSource.Dispatcher());
+        }
+
+        m_captureOnPress = capture;
+
+        // Cancel any existing capture
+        if (!m_captureOnPress)
+        {
+            m_inputSource.ReleasePointerCapture();
+        }
     }
 }

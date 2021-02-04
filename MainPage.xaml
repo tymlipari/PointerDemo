@@ -7,5 +7,17 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <local:PointerRenderer x:Name="Renderer" />
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition />
+        </Grid.RowDefinitions>
+
+        <local:PointerRenderer Grid.RowSpan="2" x:Name="Renderer" CaptureInputOnPress="{Binding ElementName=CaptureOnPressToggle, Path=IsOn}" />
+
+        <!-- Toolbar -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <ToggleSwitch x:Name="CaptureOnPressToggle" Header="Capture input on press" />
+        </StackPanel>
+    </Grid>
 </Page>
