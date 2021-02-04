@@ -32,10 +32,12 @@ namespace winrt::PointerDemo::implementation
 
                 CreateRenderingResources();
                 RegisterForInputEvents();
-                Run(); 
+                Run();
+
+                uninit_apartment();
             });
 
-        m_sizeChangedSubscription = SizeChanged(auto_revoke, [this](auto const&, auto const) { OnSizeChanged(); });
+        m_sizeChangedSubscription = SizeChanged(auto_revoke, [this](auto const&, auto const&) { OnSizeChanged(); });
     }
 
     PointerRenderer::~PointerRenderer()
@@ -47,8 +49,9 @@ namespace winrt::PointerDemo::implementation
         }
     }
 
-    void PointerRenderer::Run() const noexcept
+    void PointerRenderer::Run() noexcept
     {
+        // Signal that the render thread has begun
         SetEvent(m_readySignal.get());
 
         // Run
@@ -56,6 +59,13 @@ namespace winrt::PointerDemo::implementation
         {
             // Pump input
             m_inputSource.Dispatcher().ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
+
+            // If we've got a frame ready signal, wait for it to be
+            // set before beginning the render work
+            if (m_frameReadySignal)
+            {
+                ::WaitForSingleObject(m_frameReadySignal.get(), INFINITE);
+            }
 
             // Grab latest frame
             com_ptr<IDXGISurface> currentSurface;
@@ -66,10 +76,6 @@ namespace winrt::PointerDemo::implementation
 
             // Present
             check_hresult(m_swapChain->Present(0, 0));
-
-            // Wait for v-blank
-            Sleep(16);
-            //check_hresult(m_outputDevice->WaitForVBlank());
         }
     }
 
@@ -110,10 +116,14 @@ namespace winrt::PointerDemo::implementation
         swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
         swapChainDesc.SampleDesc.Count = 1;
         swapChainDesc.SampleDesc.Quality = 0;
+        swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
         check_hresult(factory->CreateSwapChainForComposition(m_d3dDevice.get(), &swapChainDesc, nullptr, m_swapChain.put()));
-        //check_hresult(m_swapChain->GetContainingOutput(m_outputDevice.put()));
+        m_frameReadySignal = handle{ m_swapChain.as<IDXGISwapChain2>()->GetFrameLatencyWaitableObject() };
 
         // Set the swap chain for the XAML panel
+        //
+        // Note, can't use the IAsyncAction.get() waiter because the render thread is also
+        // ASTA, so synchronize manually by attaching to the Completed event.
         handle swapChainSyncEvent{ ::CreateEventW(nullptr, false, false, nullptr) };
         auto setSwapChainAction = SetSwapChainOnPanelAsync(m_swapChain, *this);
         setSwapChainAction.Completed([&swapChainSyncEvent](auto const&, auto const&)
@@ -143,36 +153,42 @@ namespace winrt::PointerDemo::implementation
         m_pointerReleasedSubscription = m_inputSource.PointerReleased(auto_revoke, [this](auto const&, auto const& args) { OnPointerReleased(args); });
     }
 
-    void PointerRenderer::Render(IDXGISurface* renderTarget) const
+    void PointerRenderer::Render(IDXGISurface* renderTarget)
     {
-        // Setup the D2D drawing context
-        com_ptr<ID2D1Bitmap1> bitmap;
-        D2D1_BITMAP_PROPERTIES1 bitmapProps = D2D1::BitmapProperties1(
-            D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
-            D2D1::PixelFormat(DXGI_FORMAT_R8G8B8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
-        check_hresult(m_d2dDeviceContext->CreateBitmapFromDxgiSurface(renderTarget, bitmapProps, bitmap.put()));
+        // Setup the DXGI back buffer as a D2D1 bitmap render target
+        auto& bitmap = m_swapChainSurfaceBitmaps[renderTarget];
+        if (bitmap == nullptr)
+        {
+            D2D1_BITMAP_PROPERTIES1 bitmapProps = D2D1::BitmapProperties1(
+                D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+                D2D1::PixelFormat(DXGI_FORMAT_R8G8B8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+            check_hresult(m_d2dDeviceContext->CreateBitmapFromDxgiSurface(renderTarget, bitmapProps, bitmap.put()));
+        }
         m_d2dDeviceContext->SetTarget(bitmap.get());
 
-        m_d2dDeviceContext->BeginDraw();
-
-        // Clear the background
-        m_d2dDeviceContext->Clear(D2D1::ColorF(D2D1::ColorF::Black));
-
-        // Draw an indicator for each position
-        for (auto const& [id, pointerData] : m_currentPointers)
+        // Draw the scene
         {
-            auto pointerRect = D2D1::RectF(
-                pointerData.m_currentPosition.X - 20,   // left
-                pointerData.m_currentPosition.Y - 20,   // top
-                pointerData.m_currentPosition.X + 20,   // right
-                pointerData.m_currentPosition.Y + 20);  // bottom
-                
-            m_d2dDeviceContext->FillRectangle(
-                pointerRect,
-                pointerData.m_pressed ? m_pressedBrush.get() : m_hoverBrush.get());
-        }
+            m_d2dDeviceContext->BeginDraw();
 
-        check_hresult(m_d2dDeviceContext->EndDraw());
+            // Clear the background
+            m_d2dDeviceContext->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+
+            // Draw an indicator for each position
+            for (auto const& [id, pointerData] : m_currentPointers)
+            {
+                auto pointerRect = D2D1::RectF(
+                    pointerData.m_currentPosition.X - 20,   // left
+                    pointerData.m_currentPosition.Y - 20,   // top
+                    pointerData.m_currentPosition.X + 20,   // right
+                    pointerData.m_currentPosition.Y + 20);  // bottom
+
+                m_d2dDeviceContext->FillRectangle(
+                    pointerRect,
+                    pointerData.m_pressed ? m_pressedBrush.get() : m_hoverBrush.get());
+            }
+
+            check_hresult(m_d2dDeviceContext->EndDraw());
+        }
     }
 
     fire_and_forget PointerRenderer::OnSizeChanged()
@@ -190,12 +206,16 @@ namespace winrt::PointerDemo::implementation
         // Resize the swap chain (if needed)
         if (newWidth != m_width || newHeight != m_height)
         {
+            // Release any lingering references to the swap chain buffers
+            m_d2dDeviceContext->SetTarget(nullptr);
+            m_swapChainSurfaceBitmaps.clear();
+
             check_hresult(m_swapChain->ResizeBuffers(
                 2,
                 std::max(1u, static_cast<UINT>(newWidth)),
                 std::max(1u, static_cast<UINT>(newHeight)),
                 DXGI_FORMAT_UNKNOWN,
-                0));
+                DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT));
 
             m_width = newWidth;
             m_height = newHeight;

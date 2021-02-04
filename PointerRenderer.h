@@ -13,8 +13,8 @@ namespace winrt::PointerDemo::implementation
         void CreateRenderingResources();
         void RegisterForInputEvents();
 
-        void Run() const noexcept;
-        void Render(IDXGISurface* renderTarget) const;
+        void Run() noexcept;
+        void Render(IDXGISurface* renderTarget);
 
         fire_and_forget OnSizeChanged();
         void OnPointerEntered(Windows::UI::Core::PointerEventArgs const& args);
@@ -29,11 +29,13 @@ namespace winrt::PointerDemo::implementation
         handle m_readySignal;
 
         // Rendering
+        handle m_frameReadySignal;
         com_ptr<IDXGISwapChain1> m_swapChain;
         com_ptr<IDXGIOutput> m_outputDevice;
         com_ptr<ID3D11Device> m_d3dDevice;
         com_ptr<ID2D1Device> m_d2dDevice;
         com_ptr<ID2D1DeviceContext> m_d2dDeviceContext;
+        std::map<IDXGISurface*, com_ptr<ID2D1Bitmap1>> m_swapChainSurfaceBitmaps;
 
         com_ptr<ID2D1SolidColorBrush> m_hoverBrush;
         com_ptr<ID2D1SolidColorBrush> m_pressedBrush;
